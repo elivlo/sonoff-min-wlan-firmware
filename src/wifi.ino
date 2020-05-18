@@ -1,6 +1,5 @@
 #include <ESP8266WiFi.h>
-
-#define version 0.1 
+#include <WiFiUdp.h>
 
 #ifndef STASSID
 #define STASSID "SSID" // Needs to be edited
@@ -19,8 +18,9 @@
 
 const char* ssid = STASSID;
 const char* password = STAPSK;
+char incomingPacket[UDP_TX_PACKET_MAX_SIZE + 1];
 
-WiFiServer wifiServer(80);
+WiFiUDP Udp;
 
 unsigned long l_on = 0;
 unsigned long l_off = 0;
@@ -103,34 +103,42 @@ void outs_f(){
 }
 
 void server_f(){
-  WiFiClient client = wifiServer.available();
+  int packetSize = Udp.parsePacket();
     
-  if (client) {
- 
-    if (client.connected()) {
- 
-      if (client.available()>0) {
-        byte c = client.read();
-        if(c == 1){
-          client.write(1);
-          relay = S_ON;
-        } else if(c == 2){
-          client.write(0);
-          relay = S_OFF;
-        } else if(c == 3){
-          if(relay == S_ON){
-            client.write(1);
-          }else{
-            client.write(0);
-          }
-        }
+  if(packetSize){
+    digitalWrite(LED, LOW);
+    delay(500);
+    Udp.read(incomingPacket, 255);
+  
+    int len = Udp.read(incomingPacket, UDP_TX_PACKET_MAX_SIZE);
+    if (len > 0)
+      incomingPacket[len] = 0;
+    
+    
+    if(strcmp(incomingPacket, "LSTATE")==0){                        //Abfrage
+      Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
+      if(relay == S_ON){
+        Udp.write("LION");
+      }else{
+        Udp.write("LIOFF");
       }
-    } else
-        client.stop();
+      Udp.endPacket();
+    } else if(strcmp(incomingPacket, "LIGHTON")==0){                                //Anschalten
+      Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
+      Udp.write("LION");
+      Udp.endPacket();
+      relay = S_ON;
+    } else if(strcmp(incomingPacket, "LIGHTOFF")==0){                        //Ausschalten größter Wert geht
+      Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
+      Udp.write("LIOFF");
+      Udp.endPacket();
+      relay = S_OFF;
+    }
   }
 }
 
-void setup_f(){
+//-----Setup
+void setup() {
   pinMode(LED, OUTPUT);
   pinMode(BUTTON, INPUT);
   pinMode(RELAY, OUTPUT);
@@ -139,13 +147,13 @@ void setup_f(){
 
 
   //WIFI
-  IPAddress staticIP(192,168,0,202);
+  IPAddress staticIP(192,168,0,200);
   IPAddress gateway(192,168,0,1);
-  IPAddress subnet(255,255,0,0);
+  IPAddress subnet(255,255,255,0);
 
-  //WiFi.mode(WIFI_STA);
-  WiFi.config(staticIP, IPAddress(8, 8, 8, 8), gateway, subnet);
-  WiFi.hostname("aussen-lampe-HL");
+  WiFi.mode(WIFI_STA);
+  WiFi.config(staticIP, gateway, subnet);
+  WiFi.hostname("aussen-lampe");
   WiFi.begin(ssid, password);
   
   while (WiFi.status() != WL_CONNECTED){
@@ -156,18 +164,13 @@ void setup_f(){
   }
 
   //Network
-  wifiServer.begin();
+  Udp.begin(54365);
   
   l_off = millis();
   l_check = l_off;
   state = S_ON;
   relay = S_OFF;
   led = S_OFF;
-}
-
-//-----Setup
-void setup() {
-  setup_f();
 }
 
 //reset Function
