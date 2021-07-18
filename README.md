@@ -1,3 +1,3 @@
 # Sonoff Min WLAN Firmware
 
-A litte Sonoff Basic Firmware to switch it on and off over WLAN.
+A very lightweight firmware for Sonoff Basic to switch it on and off over WLAN.
